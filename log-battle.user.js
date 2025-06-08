@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         eRepublik Battle Logger
 // @namespace    https://github.com/driversti/erepublik-scripts
-// @version      1.0
+// @version      1.1
 // @description  Adds a draggable button to log battle data. Its position is saved automatically.
 // @author       driversti https://www.erepublik.com/en/citizen/profile/4690052
 // @updateURL    https://github.com/driversti/erepublik-scripts/blob/main/log-battle.user.js
@@ -54,34 +54,27 @@
         .ex-log-battle-toast.ex-show { opacity: 1; }
     `);
 
-    /**
-     * Main function to initialize the button and its functionality
-     */
     function init() {
-        // 1. Create the button element
         const recordButton = document.createElement('div');
         recordButton.id = BUTTON_ID;
         recordButton.textContent = 'Record';
         document.body.appendChild(recordButton);
 
-        // 2. Load saved position from Local Storage
         const savedPos = localStorage.getItem(STORAGE_KEY);
         if (savedPos) {
             const pos = JSON.parse(savedPos);
             recordButton.style.top = pos.top;
             recordButton.style.left = pos.left;
         } else {
-            // Default position if none is saved (top right corner)
             recordButton.style.top = '150px';
             recordButton.style.left = `${window.innerWidth - 120}px`;
         }
 
-        // 3. Make the button draggable
         makeDraggable(recordButton);
     }
 
     /**
-     * Attaches mousedown event listener to make the button draggable.
+     * Attaches event listeners to make the button draggable with both mouse and touch input.
      * @param {HTMLElement} button The button element to make draggable.
      */
     function makeDraggable(button) {
@@ -89,48 +82,61 @@
         let hasDragged = false;
         let startX, startY;
 
-        button.addEventListener('mousedown', (e) => {
-            // Prevent default drag behavior (like image ghosting)
-            e.preventDefault();
+        function dragStart(e) {
+            // Use touch event data if it's a touch screen, otherwise use mouse event data
+            const event = e.type === 'touchstart' ? e.touches[0] : e;
+
+            // Prevent default actions like text selection or page scrolling on touch
+            if (e.type === 'touchstart') {
+                e.preventDefault();
+            }
+
             isDragging = true;
             hasDragged = false;
 
-            startX = e.clientX - button.offsetLeft;
-            startY = e.clientY - button.offsetTop;
+            startX = event.clientX - button.offsetLeft;
+            startY = event.clientY - button.offsetTop;
 
-            document.addEventListener('mousemove', onMouseMove);
-            document.addEventListener('mouseup', onMouseUp);
-        });
+            // Add appropriate move and end listeners
+            document.addEventListener(e.type === 'mousedown' ? 'mousemove' : 'touchmove', dragMove);
+            document.addEventListener(e.type === 'mousedown' ? 'mouseup' : 'touchend', dragEnd);
+        }
 
-        function onMouseMove(e) {
+        function dragMove(e) {
             if (!isDragging) return;
-            hasDragged = true; // Register that a drag has occurred
+            hasDragged = true;
 
-            // Position the button based on mouse movement
-            const newX = e.clientX - startX;
-            const newY = e.clientY - startY;
+            const event = e.type === 'touchmove' ? e.touches[0] : e;
+            const newX = event.clientX - startX;
+            const newY = event.clientY - startY;
             button.style.left = `${newX}px`;
             button.style.top = `${newY}px`;
         }
 
-        function onMouseUp() {
-            // Clean up global event listeners
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
+        function dragEnd(e) {
+            isDragging = false;
+
+            // Clean up listeners based on the event type that started the drag
+            if (e.type === 'mouseup') {
+                document.removeEventListener('mousemove', dragMove);
+                document.removeEventListener('mouseup', dragEnd);
+            } else { // touchend
+                document.removeEventListener('touchmove', dragMove);
+                document.removeEventListener('touchend', dragEnd);
+            }
 
             if (hasDragged) {
-                // If the button was dragged, save the new position
                 const finalPos = { top: button.style.top, left: button.style.left };
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(finalPos));
             } else {
-                // If not dragged, it's a click. Perform the action.
-                // This correctly prevents requests while dragging.
                 logBattle();
             }
-            isDragging = false;
         }
-    }
 
+        // Add both mouse and touch listeners to the button
+        button.addEventListener('mousedown', dragStart);
+        button.addEventListener('touchstart', dragStart, { passive: false });
+    }
 
     // === Core Feature Logic ===
     async function logBattle() {
