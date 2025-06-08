@@ -4,8 +4,8 @@
 // @version      1.1
 // @description  Adds a draggable button to log battle data. Its position is saved automatically.
 // @author       driversti https://www.erepublik.com/en/citizen/profile/4690052
-// @updateURL    https://github.com/driversti/erepublik-scripts/blob/main/log-battle.user.js
-// @downloadURL  https://github.com/driversti/erepublik-scripts/blob/main/log-battle.user.js
+// @updateURL    https://driversti.github.io/erepublik-scripts/log-battle.user.js
+// @downloadURL  https://driversti.github.io/erepublik-scripts/log-battle.user.js
 // @match        https://www.erepublik.com/*/military/battlefield/*
 // @connect      n8n.yurii.live
 // @grant        GM_addStyle
