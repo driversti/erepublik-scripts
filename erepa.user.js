@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name eRepa
-// @version 0.0.11
+// @version 0.0.12
 // @description An Uber-script aiming to cover all you might need in the game.
 // @namespace http://tampermonkey.net/
 // @author driversti (https://www.erepublik.com/en/citizen/profile/4690052)
