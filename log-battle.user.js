@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         eRepublik Battle Logger
 // @namespace    https://github.com/driversti/erepublik-scripts
-// @version      1.1
+// @version      1.2
 // @description  Adds a draggable button to log battle data. Its position is saved automatically.
 // @author       driversti https://www.erepublik.com/en/citizen/profile/4690052
 // @updateURL    https://driversti.github.io/erepublik-scripts/log-battle.user.js
@@ -81,6 +81,9 @@
         let isDragging = false;
         let hasDragged = false;
         let startX, startY;
+        let startTime = 0;
+        let touchTimeout = null;
+        let isProcessingClick = false; // Flag to prevent double-triggering
 
         function dragStart(e) {
             // Use touch event data if it's a touch screen, otherwise use mouse event data
@@ -89,10 +92,17 @@
             // Prevent default actions like text selection or page scrolling on touch
             if (e.type === 'touchstart') {
                 e.preventDefault();
+                
+                // Clear any existing timeout
+                if (touchTimeout) {
+                    clearTimeout(touchTimeout);
+                    touchTimeout = null;
+                }
             }
 
             isDragging = true;
             hasDragged = false;
+            startTime = Date.now();
 
             startX = event.clientX - button.offsetLeft;
             startY = event.clientY - button.offsetTop;
@@ -115,27 +125,65 @@
 
         function dragEnd(e) {
             isDragging = false;
+            const touchDuration = Date.now() - startTime;
 
             // Clean up listeners based on the event type that started the drag
             if (e.type === 'mouseup') {
                 document.removeEventListener('mousemove', dragMove);
                 document.removeEventListener('mouseup', dragEnd);
+                
+                // For mouse events, we can directly determine if it was a click or drag
+                if (hasDragged) {
+                    const finalPos = { top: button.style.top, left: button.style.left };
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(finalPos));
+                } else if (!isProcessingClick) {
+                    isProcessingClick = true;
+                    logBattle();
+                    // Reset the flag after a short delay
+                    setTimeout(() => { isProcessingClick = false; }, 300);
+                }
             } else { // touchend
                 document.removeEventListener('touchmove', dragMove);
                 document.removeEventListener('touchend', dragEnd);
-            }
-
-            if (hasDragged) {
-                const finalPos = { top: button.style.top, left: button.style.left };
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(finalPos));
-            } else {
-                logBattle();
+                
+                // For touch events, we need to be more careful to distinguish taps from drags
+                if (hasDragged) {
+                    const finalPos = { top: button.style.top, left: button.style.left };
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(finalPos));
+                } else if (touchDuration < 300 && !isProcessingClick) { // Short touch duration indicates a tap
+                    // Use a small delay to ensure it's not part of a gesture
+                    isProcessingClick = true;
+                    touchTimeout = setTimeout(() => {
+                        logBattle();
+                        touchTimeout = null;
+                        // Reset the flag after a short delay
+                        setTimeout(() => { isProcessingClick = false; }, 300);
+                    }, 10);
+                }
             }
         }
 
-        // Add both mouse and touch listeners to the button
+        // Add a dedicated tap/click handler for touch devices
+        function handleTap(e) {
+            // Prevent the default behavior to avoid any browser-specific handling
+            e.preventDefault();
+            
+            // Only process if we're not already handling a click
+            if (!isProcessingClick) {
+                isProcessingClick = true;
+                
+                // Call logBattle directly for explicit tap events
+                logBattle();
+                
+                // Reset the flag after a short delay
+                setTimeout(() => { isProcessingClick = false; }, 300);
+            }
+        }
+        
+        // Add mouse, touch, and tap listeners to the button
         button.addEventListener('mousedown', dragStart);
         button.addEventListener('touchstart', dragStart, { passive: false });
+        button.addEventListener('click', handleTap);
     }
 
     // === Core Feature Logic ===
