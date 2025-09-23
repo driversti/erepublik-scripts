@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name eRepa
-// @version 1.3.0
+// @version 1.4.0
 // @description An Uber-script aiming to cover all you might need in the game.
 // @namespace https://github.com/driversti/erepublik-scripts
 // @author driversti (https://www.erepublik.com/en/citizen/profile/4690052)
