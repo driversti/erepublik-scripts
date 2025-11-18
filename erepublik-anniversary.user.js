@@ -12,8 +12,8 @@
 // @grant        GM_deleteValue
 // @grant        GM_registerMenuCommand
 // @run-at       document-end
-// @license      MIT
-// @downloadURL  https://github.com/driversti/erepublik-scripts/blob/main/erepublik-anniversary.user.js
+// @license      proprietary
+// @downloadURL  https://github.com/driversti/erepublik-scripts/raw/refs/heads/main/erepublik-anniversary.user.js
 // ==/UserScript==
 
 
