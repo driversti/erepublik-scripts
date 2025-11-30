@@ -22,7 +22,9 @@
     let state = {
         isRunning: false,
         spinsCount: 0,
-        totalCost: 0,
+        spinsCount: 0,
+        sessionSpent: 0,
+        initialSpent: 0,
         prizes: [],
         settings: {
             spinType: 1, // 1 or 5
@@ -144,8 +146,10 @@
 
             <div class="wof-results">
                 <h3>Results</h3>
-                <div class="wof-stat"><span>Spins:</span> <span id="wof-stat-spins">0</span></div>
-                <div class="wof-stat"><span>Spent:</span> <span id="wof-stat-spent">0</span></div>
+                <div class="wof-stat"><span>Session Spins:</span> <span id="wof-stat-session-spins">0</span></div>
+                <div class="wof-stat"><span>Session Spent:</span> <span id="wof-stat-spent">0</span></div>
+                <div class="wof-stat"><span>Total Spins:</span> <span id="wof-stat-total-spins">0</span></div>
+                <div class="wof-stat"><span>Total Spent:</span> <span id="wof-stat-total-spent">0</span></div>
                 <div class="wof-stat"><span>Jackpots:</span> <span id="wof-stat-jackpots">0</span></div>
                 
                 <div class="wof-log" id="wof-log"></div>
@@ -169,6 +173,10 @@
 
         modal.style.display = isVisible ? 'none' : 'block';
         overlay.style.display = isVisible ? 'none' : 'block';
+
+        if (!isVisible) {
+            fetchData();
+        }
     }
 
     function toggleSpinning() {
@@ -180,7 +188,7 @@
     }
 
     function getCSRFToken() {
-        return window.csrfToken || "";
+        return csrfToken || "";
     }
 
     async function fetchData() {
@@ -212,8 +220,18 @@
         state.nextSpinCost = data.cost;
         state.jackpotsWon = data.progress.jackpot;
         state.multispinCosts = data.multispin; // Store multispin costs
+
+        // Calculate initial spent based on spins count
+        // Formula: sum of arithmetic progression where a1=500, d=100
+        // Cost of n-th spin = 500 + (n-1)*100
+        // Total cost for k spins = k/2 * (2*500 + (k-1)*100) = k * (500 + 50(k-1)) = 500k + 50k^2 - 50k = 450k + 50k^2
+        const k = data.progress.spins;
+        state.initialSpent = 450 * k + 50 * k * k;
+
         // Update UI with current stats if needed
         document.getElementById('wof-stat-jackpots').innerText = state.jackpotsWon;
+        document.getElementById('wof-stat-total-spent').innerText = state.initialSpent;
+        document.getElementById('wof-stat-total-spins').innerText = data.progress.spins;
     }
 
     function startSpinning() {
@@ -229,22 +247,31 @@
         state.settings.stopOnJackpot = document.getElementById('wof-stop-jackpot').checked;
 
         state.isRunning = true;
-        state.totalCost = 0; // Reset session cost
+        state.sessionSpent = 0; // Reset session cost
         state.spinsCount = 0; // Reset session spins
 
         document.getElementById('wof-start-btn').innerText = "Stop Auto-Spin";
         document.getElementById('wof-start-btn').style.background = "#e74c3c";
 
         log("Starting auto-spin...");
-        runSpinLoop();
+        // Fetch data once before starting the loop
+        fetchData().then((success) => {
+            if (success) {
+                runSpinLoop();
+            } else {
+                state.isRunning = false;
+                document.getElementById('wof-start-btn').innerText = "Start Auto-Spin";
+                document.getElementById('wof-start-btn').style.background = "#2ecc71";
+            }
+        });
     }
 
     async function runSpinLoop() {
         if (!state.isRunning) return;
 
-        // 1. Fetch current data to get cost
-        const successFetch = await fetchData();
-        if (!successFetch || !state.isRunning) return;
+        // 1. (Removed) Fetch current data to get cost - we now rely on state updated by previous spin
+        // const successFetch = await fetchData();
+        // if (!successFetch || !state.isRunning) return;
 
         // 2. Check limits
         const spinType = state.settings.spinType;
@@ -264,10 +291,13 @@
             return;
         }
 
-        if (state.settings.maxTotalSpend !== -1 && (state.totalCost + currentSpinCost) > state.settings.maxTotalSpend) {
-            log(`Next spin cost (${currentSpinCost}) would exceed max total spend (${state.settings.maxTotalSpend}). Stopping.`);
-            stopSpinning();
-            return;
+        if (state.settings.maxTotalSpend !== -1) {
+            const totalProjectedSpend = state.initialSpent + state.sessionSpent + currentSpinCost;
+            if (totalProjectedSpend > state.settings.maxTotalSpend) {
+                log(`Next spin cost (${currentSpinCost}) would make total spend (${totalProjectedSpend}) exceed limit (${state.settings.maxTotalSpend}). Stopping.`);
+                stopSpinning();
+                return;
+            }
         }
 
         // 3. Spin
@@ -296,9 +326,15 @@
             const data = await response.json();
 
             // Update state
-            state.totalCost += cost;
+            state.sessionSpent += cost;
             state.spinsCount += spins;
             state.jackpotsWon = data.jackpot;
+
+            // Update next spin cost and multispin costs for the next iteration
+            state.nextSpinCost = data.cost;
+            if (data.multispin) {
+                state.multispinCosts = data.multispin;
+            }
 
             // Log prizes and save to history
             if (data.prizes) {
@@ -317,9 +353,11 @@
             }
 
             // Update UI
-            document.getElementById('wof-stat-spins').innerText = state.spinsCount;
-            document.getElementById('wof-stat-spent').innerText = state.totalCost;
+            document.getElementById('wof-stat-session-spins').innerText = state.spinsCount;
+            document.getElementById('wof-stat-spent').innerText = state.sessionSpent;
+            document.getElementById('wof-stat-total-spent').innerText = state.initialSpent + state.sessionSpent;
             document.getElementById('wof-stat-jackpots').innerText = state.jackpotsWon;
+            document.getElementById('wof-stat-total-spins').innerText = data.spins;
 
             // Check Stop on Jackpot
             if (state.settings.stopOnJackpot) {
