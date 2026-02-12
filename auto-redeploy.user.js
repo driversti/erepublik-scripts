@@ -519,6 +519,7 @@
   let selectedBoosterIds = new Set();
   let retryCount = 0;
   let stopRequested = false;
+  let autoLoopEnabled = false;
 
   function setState(newState) {
     currentState = newState;
@@ -604,8 +605,8 @@
     updateStatsDisplay();
     log(`Deploy #${deployCount} complete`);
 
-    if (stopRequested) {
-      transitionToStopped('Stopped by user');
+    if (!autoLoopEnabled || stopRequested) {
+      transitionToStopped(stopRequested ? 'Stopped by user' : 'Deploy finished');
       return;
     }
 
@@ -638,6 +639,7 @@
   function transitionToStopped(reason) {
     stopCompletionDetector();
     stopPPTimer();
+    autoLoopEnabled = false;
     updateWsIndicator(pomeloConnected ? 'idle' : 'disconnected');
     setState(State.STOPPED);
     log(`Stopped: ${reason}`);
@@ -654,6 +656,7 @@
     }
 
     stopRequested = false;
+    autoLoopEnabled = true;
     deployCount = 0;
     retryCount = 0;
     ppBoosterTracker = null;
@@ -671,25 +674,6 @@
     if (!ctx) {
       log('Cannot read page context (SERVER_DATA missing)', 'error');
       return;
-    }
-
-    // If SERVER_DATA says deploying, verify via API (SERVER_DATA can be stale)
-    if (ctx.deployment) {
-      log('SERVER_DATA shows active deployment - verifying...');
-      try {
-        const citizenData = await getJSON(
-          'https://www.erepublik.com/en/military/campaignsJson/citizen'
-        );
-        if (citizenData.deployment !== null && citizenData.deployment !== undefined) {
-          log('Confirmed: deployment is active - waiting for it to finish');
-          setState(State.WAITING_FOR_COMPLETION);
-          startCompletionDetector(ctx.battleId, ctx.battleZoneId);
-          return;
-        }
-        log('SERVER_DATA was stale - no active deployment, proceeding normally');
-      } catch (err) {
-        log(`Could not verify deployment: ${err.message} - proceeding anyway`, 'warn');
-      }
     }
 
     // Activate selected boosters
@@ -1346,6 +1330,25 @@
       } catch (err) {
         log(`Initial inventory fetch failed: ${err.message}`, 'warn');
         log('Weapon/vehicle dropdowns will populate on START');
+      }
+    }
+
+    // Check for active deployment (e.g. page refresh mid-deploy)
+    if (ctx && ctx.deployment) {
+      log('SERVER_DATA shows active deployment - verifying...');
+      try {
+        const citizenData = await getJSON(
+          'https://www.erepublik.com/en/military/campaignsJson/citizen'
+        );
+        if (citizenData.deployment !== null && citizenData.deployment !== undefined) {
+          log('Active deployment detected - monitoring for completion');
+          setState(State.WAITING_FOR_COMPLETION);
+          startCompletionDetector(ctx.battleId, ctx.battleZoneId);
+          return;
+        }
+        log('SERVER_DATA was stale - no active deployment');
+      } catch (err) {
+        log(`Could not verify deployment: ${err.message}`, 'warn');
       }
     }
 
